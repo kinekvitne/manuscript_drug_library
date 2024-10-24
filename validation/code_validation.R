@@ -42,12 +42,12 @@ DHP <- annotations_DPH_filtered %>%
   left_join(all_metadata, by = c("SpectrumID" = "gnps_libid")) %>% 
   dplyr::filter(chemical_source %in% c("Medical","Drug metabolite","Drug_analog", "Drug_suspect"))
 
-unique(metadata_DPH$SubjectIdentifierAsRecorded)
+unique(metadata_DPH$Subject)
 
 DPH_data <- metadata_DPH %>%
   dplyr::left_join(DHP, by = c("filename" = "SpectrumFile")) %>% 
   distinct(filename, name_parent_compound, .keep_all = TRUE) %>% 
-  dplyr::filter(!(SubjectIdentifierAsRecorded %in% c("not applicable", "not collected")))
+  dplyr::filter(!(Subject %in% c("not applicable", "not collected")))
 
 DPH_data_2 <- DPH_data %>%
   mutate(plasma = ifelse(str_detect(UBERONBodyPartName, "blood plasma"), 1, 0)) %>%
@@ -64,25 +64,25 @@ plasma_DPH <- only_DPH %>%
   dplyr::filter(UBERONBodyPartName == "blood plasma")
 
 collapsed_plasma_DPH <- plasma_DPH %>%
-  dplyr::distinct(SubjectIdentifierAsRecorded, timepoint_min, name_parent_compound, .keep_all = TRUE)
+  dplyr::distinct(Subject, timepoint_min, name_parent_compound, .keep_all = TRUE)
 
 skin_DPH <- only_DPH %>% 
   dplyr::filter(str_detect(UBERONBodyPartName, "skin"))
 
 collapsed_skin_DPH <- skin_DPH %>%
-  dplyr::distinct(SubjectIdentifierAsRecorded, timepoint_min, name_parent_compound, .keep_all = TRUE)
+  dplyr::distinct(Subject, timepoint_min, name_parent_compound, .keep_all = TRUE)
 
 data_plasma_skin_DPH <- rbind(collapsed_plasma_DPH, collapsed_skin_DPH)
 
 # Create a dataframe of all unique subjects and all timepoints
 complete_timepoints <- DPH_data_2 %>%
-  dplyr::distinct(SubjectIdentifierAsRecorded) %>%  
+  dplyr::distinct(Subject) %>%  
   tidyr::crossing(timepoint_min = timepoints)  
 
 # Left join the complete_timepoints back to the original dataset
 # This will fill missing timepoints with NA for the other columns
 DPH_data_3 <- complete_timepoints %>%
-  left_join(data_plasma_skin_DPH, by = c("SubjectIdentifierAsRecorded", "timepoint_min"))
+  left_join(data_plasma_skin_DPH, by = c("Subject", "timepoint_min"))
 
 DPH_data_3$timepoint_min <- as.numeric(DPH_data_3$timepoint_min)
 
@@ -138,11 +138,11 @@ getwd()
 # Create confusion matrix for plasma
 DPH_data_plasma <- DPH_data_4 %>% 
   dplyr::filter(UBERONBodyPartName == "blood plasma") %>% 
-  dplyr::select(SubjectIdentifierAsRecorded, timepoint_min, name_parent_compound,
+  dplyr::select(Subject, timepoint_min, name_parent_compound,
                 plasma, plasma_expected)
 
 DPH_data_plasma_all <- complete_timepoints %>%
-  left_join(DPH_data_plasma, by = c("SubjectIdentifierAsRecorded", "timepoint_min"))  %>%
+  left_join(DPH_data_plasma, by = c("Subject", "timepoint_min"))  %>%
   dplyr::mutate(plasma_expected = ifelse(timepoint_min == 0, 0, 1)) %>%
   dplyr::mutate(plasma = ifelse(is.na(plasma), 0, plasma))
 
@@ -152,7 +152,7 @@ table(DPH_predose_plasma$plasma)
 
 DPH_postdose_plasma <- DPH_data_plasma_all %>%
   dplyr::filter(timepoint_min >= 30 & timepoint_min <= 1440) %>%
-  group_by(SubjectIdentifierAsRecorded) %>%
+  group_by(Subject) %>%
   summarise(plasma = max(plasma)) %>%
   ungroup()
 table(DPH_postdose_plasma$plasma)
@@ -178,11 +178,11 @@ getwd()
 # Generate confusion matrix for diphenhydramine detection in skin
 DPH_data_skin <- DPH_data_4 %>% 
   dplyr::filter(str_detect(UBERONBodyPartName, "skin")) %>% 
-  dplyr::select(SubjectIdentifierAsRecorded, timepoint_min, name_parent_compound,
+  dplyr::select(Subject, timepoint_min, name_parent_compound,
                 skin, skin_expected)
 
 DPH_data_skin_all <- complete_timepoints %>%
-  left_join(DPH_data_skin, by = c("SubjectIdentifierAsRecorded", "timepoint_min"))  %>%
+  left_join(DPH_data_skin, by = c("Subject", "timepoint_min"))  %>%
   dplyr::mutate(skin_expected = ifelse(timepoint_min == 0, 0, 1)) %>%
   dplyr::mutate(skin = ifelse(is.na(skin), 0, skin))
 
@@ -192,7 +192,7 @@ table(DPH_predose_skin$skin)
 
 DPH_postdose_skin <- DPH_data_skin_all %>%
   dplyr::filter(timepoint_min >= 30 & timepoint_min <= 1440) %>%
-  group_by(SubjectIdentifierAsRecorded) %>%
+  group_by(Subject) %>%
   summarise(skin = max(skin)) %>%
   ungroup()
 table(DPH_postdose_skin$skin)
@@ -440,7 +440,7 @@ CM_midazolam_plasma <- ggplot(conf_matrix_midazolam_plasma_df, aes(Var2, Var1, f
 ggsave("CM_validation_cooperstown_midazolam_plasma.pdf", plot = CM_midazolam_plasma, width = 6, height = 4.5, dpi = 900)
 getwd()
 
-# Generate confusion matrix for midazolam in plasma
+# Generate confusion matrix for omeprazole in plasma
 omeprazole_plasma_predose <- cooper_plasma_4 %>%
   dplyr::filter(Time_Point_Mins == 0)
 table(omeprazole_plasma_predose$omeprazole)
