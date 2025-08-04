@@ -1,4 +1,4 @@
-setwd("add directory with data")
+setwd()
 
 library(dplyr)
 library(readxl)
@@ -11,9 +11,9 @@ library(rworldmap)
 library(sf)
 
 # Read data
-feature_table <- read.csv("20240507_AGP_NoGapFill_BlkRm_LODcheck.csv", sep = ",")
-annotations <- read.delim("FBMN-649a6b4b.tsv", header = TRUE, stringsAsFactors = FALSE)
-ReDu_AGP <- read.csv("ReDu_metadata_AGP.csv") #MSV000080673
+feature_table <- read.csv("20240507_AGP_NoGapFill_BlkRm_LODcheck.csv", sep = ",") 
+annotations <- read.delim("merged_results_with_gnps.tsv", header = TRUE, stringsAsFactors = FALSE) 
+ReDu_AGP <- read.csv("ReDu_metadata_AGP.csv") #MSV000080673 
 data_10317_2136 <- read.csv("qiita_metadata_IDs_10317_2136.csv") 
 
 feature_table_t <- feature_table %>% column_to_rownames("X") %>% t() %>% as.data.frame() %>% rownames_to_column("SampleID")
@@ -25,7 +25,7 @@ annotations <- annotations %>% dplyr::filter(!(SharedPeaks <= 4 & MQScore < 0.9)
 # Manual inspection (shared peaks <= 4 and cosine >= 0.9)
 # Features to be excluded
 annotations_curated <- annotations %>%
-  dplyr::filter(!(X.Scan. %in% c("8227", "3799", "3211", "51694", "6205")))
+  dplyr::filter(!(X.Scan. %in% c("3799")))
 
 AGP_annotations <- annotations_curated %>%
   dplyr::select(SpectrumID, Compound_Name, X.Scan.)
@@ -120,20 +120,20 @@ min(AGP_age_sex$AgeInYears)
 max(AGP_age_sex$AgeInYears) 
 
 # Read data GNPS drug library
-metadata_druglib <- read.csv("20240904_druglib_metadata_FINAL.csv", sep = ",")
+metadata_druglib <- read.csv("GNPS_Drug_Library_Metadata_Drugs.csv", sep = ",")
 metadata_druglib <- metadata_druglib %>%
   dplyr::select(-smiles)
 metadata_druglib$name_connected_compound <- NA
 colnames(metadata_druglib)
 
 # Read data GNPS analog/suspect library
-metadata_analog_suspect <- read.csv("20240904_drug_analog_suspect_metadata_FINAL.csv", sep = ",")
+metadata_analog_suspect <- read.csv("GNPS_Drug_Library_Metadata_Drug_Analogs_Updated.csv", sep = ",")
+metadata_analog_suspect <- metadata_analog_suspect %>% 
+  dplyr::select(-delta_mass, -analog_mgf_scan, -analog_usi, -parent_drug_libid)
 metadata_analog_suspect$name_parent_compound <- metadata_analog_suspect$name_connected_compound
-metadata_analog_suspect <- metadata_analog_suspect %>%
-  dplyr::select(-gnps_libid, -analog_mgf_scan)
+colnames(metadata_analog_suspect)[colnames(metadata_analog_suspect) == "name_analog"] <- "name_compound"
 colnames(metadata_analog_suspect)
 colnames(metadata_analog_suspect)[colnames(metadata_analog_suspect) == "analog_libid"] <- "gnps_libid"
-colnames(metadata_analog_suspect)[colnames(metadata_analog_suspect) == "name_analog"] <- "name_compound"
 
 # Combine metadata for the GNPS drug library and analog/suspect library
 all_metadata <- rbind(metadata_druglib, metadata_analog_suspect)
@@ -144,54 +144,39 @@ AGP_druglib <- AGP_10317 %>%
   dplyr::filter(SpectrumID %in% all_metadata$gnps_libid) %>%
   left_join(all_metadata, by = c("SpectrumID" = "gnps_libid")) %>% 
   distinct(SampleID, name_compound, .keep_all = TRUE) %>% 
-  dplyr::filter(chemical_source %in% c("Medical","Drug metabolite","Drug_analog", "Drug_suspect"))
+  dplyr::filter(chemical_source %in% c("Medical","Drug metabolite","Drug_analog"))
 
 # Generate a frequency table to summarize detected drugs
 freq_table <- table(AGP_druglib$name_parent_compound) 
 freq_df <- as.data.frame(freq_table) %>% arrange(desc(Freq))
 
 # Standardize specific compound names for consistency before downstream analysis
+AGP_druglib$name_parent_compound <- ifelse(AGP_druglib$name_parent_compound == "n-acetyl mesalazine", "mesalazine", AGP_druglib$name_parent_compound)
 AGP_druglib$name_parent_compound <- ifelse(AGP_druglib$name_parent_compound == "omeprazole sulfide 5-carboxylic acid", "omeprazole", AGP_druglib$name_parent_compound)
 AGP_druglib$name_parent_compound <- ifelse(AGP_druglib$name_parent_compound == "atenolol|metoprolol", "metoprolol", AGP_druglib$name_parent_compound)
-AGP_druglib$name_parent_compound <- ifelse(AGP_druglib$name_parent_compound == "desmethylsertraline|dasotraline", "sertraline", AGP_druglib$name_parent_compound)
-AGP_druglib$name_parent_compound <- ifelse(AGP_druglib$name_parent_compound == "fexofenadine methyl ester", "fexofenadine", AGP_druglib$name_parent_compound)
-AGP_druglib$name_parent_compound <- ifelse(AGP_druglib$name_parent_compound == "clarithromycin|erythromycin|davercin", "erythromycin", AGP_druglib$name_parent_compound)
-AGP_druglib$name_parent_compound <- ifelse(AGP_druglib$name_parent_compound == "losartan|losartan", "losartan", AGP_druglib$name_parent_compound)
+AGP_druglib$name_parent_compound <- ifelse(AGP_druglib$name_parent_compound == "clarithromycin|erythromycin", "erythromycin", AGP_druglib$name_parent_compound)
+AGP_druglib$name_parent_compound <- ifelse(AGP_druglib$name_parent_compound == "quetiapine sulfoxide ", "quetiapine", AGP_druglib$name_parent_compound)
 AGP_druglib$name_parent_compound <- ifelse(AGP_druglib$name_parent_compound == "clindamycin n-oxide", "clindamycin", AGP_druglib$name_parent_compound)
 AGP_druglib$name_parent_compound <- ifelse(AGP_druglib$name_parent_compound == "clindamycin sulfoxide", "clindamycin", AGP_druglib$name_parent_compound)
-AGP_druglib$name_parent_compound <- ifelse(AGP_druglib$name_parent_compound == "losartan|losartan carboxylic acid|losartan carboxaldehyde", "losartan", AGP_druglib$name_parent_compound)
 AGP_druglib$name_parent_compound <- ifelse(AGP_druglib$name_parent_compound == "albendazole ", "albendazole", AGP_druglib$name_parent_compound)
-AGP_druglib$name_parent_compound <- ifelse(AGP_druglib$name_parent_compound == "metoprolol acid", "metoprolol", AGP_druglib$name_parent_compound)
-AGP_druglib$name_parent_compound <- ifelse(AGP_druglib$name_parent_compound == "n-desmethylclarithromycin", "erythromycin", AGP_druglib$name_parent_compound)
-AGP_druglib$name_parent_compound <- ifelse(AGP_druglib$name_parent_compound == "quetiapine sulfoxide", "quetiapine", AGP_druglib$name_parent_compound)
-AGP_druglib$name_parent_compound <- ifelse(AGP_druglib$name_parent_compound == "levofloxacin|ofloxacin", "ofloxacin", AGP_druglib$name_parent_compound)
-AGP_druglib$name_parent_compound <- ifelse(AGP_druglib$name_parent_compound == 
-                                             "methyl 7-chloro-6,7,8-trideoxy-6-[[[(2s,4r)-4beta-propyl-2alpha-pyrrolidinyl]carbonyl]amino]-1-thio-l-threo-alpha-d-galacto-octopyranoside",
-                                           "clindamycin", AGP_druglib$name_parent_compound)
-AGP_druglib$pharmacologic_class <- ifelse(AGP_druglib$pharmacologic_class == "macrolide antimicrobial|no_match", "macrolide antimicrobial", AGP_druglib$pharmacologic_class)
+AGP_druglib$name_parent_compound <- ifelse(AGP_druglib$name_parent_compound == "losartan|losartan", "losartan", AGP_druglib$name_parent_compound)
+AGP_druglib$name_parent_compound <- ifelse(AGP_druglib$name_parent_compound == "losartan ", "losartan", AGP_druglib$name_parent_compound)
 
-# Update labeling for specific compounds
-AGP_druglib <- AGP_druglib %>% dplyr::mutate(chemical_source = ifelse(name_parent_compound == "desonide", "Medical|Low_confidence", chemical_source))
-AGP_druglib <- AGP_druglib %>% dplyr::mutate(chemical_source = ifelse(name_parent_compound == "prednisolone", "Medical|Low_confidence", chemical_source))
-AGP_druglib <- AGP_druglib %>% dplyr::mutate(chemical_source = ifelse(name_parent_compound == "mestranol", "Medical|Low_confidence", chemical_source))
-AGP_druglib <- AGP_druglib %>% dplyr::mutate(chemical_source = ifelse(name_parent_compound == "enoxolone", "Medical|Low_confidence", chemical_source))
-AGP_druglib <- AGP_druglib %>% dplyr::mutate(chemical_source = ifelse(name_parent_compound == "quinine", "Medical|Food", chemical_source))
-AGP_druglib <- AGP_druglib %>% dplyr::mutate(chemical_source = ifelse(SpectrumID == "CCMSLIB00012724132", "Drug analog|Low_confidence", chemical_source))
 
 # Remove duplicates again since for some individuals we detect both the parent compound and drug metabolites
 AGP_druglib <- AGP_druglib %>%
-  dplyr::filter(chemical_source %in% c("Medical","Drug metabolite","Drug_analog", "Drug_suspect")) %>% 
+  dplyr::filter(chemical_source %in% c("Medical","Drug metabolite","Drug_analog")) %>% 
   distinct(SampleID, name_parent_compound, .keep_all = TRUE)
 
 # Save the final AGP data combined with the GNPS drug library metadata to a csv file to avoid rerunning the entire code
 #write.csv(AGP_druglib, "AGP_10317_druglib_annotations.csv")
 
 AGP_druglib <- read.csv("AGP_10317_druglib_annotations.csv", sep = ",") %>%
-  dplyr::select(-1)
+  dplyr::select(-1) 
 
 # Count number of unique parent compounds detected
 count_detected_drugs <- AGP_druglib %>% 
-  dplyr::distinct(name_parent_compound, .keep_all = TRUE) # n = 75
+  dplyr::distinct(name_parent_compound, .keep_all = TRUE) # n = 89
 
 # Count number of unique IDs where drug was detected
 unique_IDs_drug <- AGP_druglib %>%
@@ -213,7 +198,9 @@ total_individuals <- n_distinct(AGP_10317$host_subject_id)
 drug_percentages <- drug_counts %>%
   mutate(drug_percentage = (drug_count / total_individuals) * 100) %>%
   dplyr::arrange(desc(drug_percentage)) %>%
-  head(20)
+  head(22) %>% 
+  dplyr::filter(!pharmacologic_class %in% c("antirheumatic|antimalarial", "antileishmanial drug"))
+
 
 # Figure 1g
 top20_pharmacologic_class <- ggplot(drug_percentages, aes(x = reorder(pharmacologic_class, drug_percentage), y = drug_percentage)) +
@@ -229,8 +216,8 @@ top20_pharmacologic_class <- ggplot(drug_percentages, aes(x = reorder(pharmacolo
         panel.grid.minor = element_blank()) +
   coord_flip()
 top20_pharmacologic_class
-ggsave("AGP_top20_pharmacologic_class.pdf", plot = top20_pharmacologic_class, width = 6, height = 4, dpi = 900)
-getwd()
+#ggsave("AGP_top20_pharmacologic_class.svg", plot = top20_pharmacologic_class, width = 6, height = 4, dpi = 900)
+#getwd()
 
 ###### FIGURE 1h - DETECTED DRUGS ACROSS AGE AND SEX ######
 # Create age bins to categorize individuals into age groups. Exclude individuals 90-100 yrs
@@ -261,8 +248,9 @@ AGP_final_drug_data <- AGP_final_drug_data %>%
 # CARDIOVASCULAR DRUGS
 # Filter for cardiovascular drugs and remove duplicates
 CV_HT_drugs <- AGP_final_drug_data %>%
-  filter(str_detect(therapeutic_area, "cardiolog")) %>%
-  filter(!str_detect(therapeutic_indication, "erectile dysfunction")) %>%
+  dplyr::filter(str_detect(therapeutic_area, "cardiolog")) %>%
+  dplyr::filter(!str_detect(therapeutic_indication, "erectile dysfunction")) %>%
+  dplyr::filter(!str_detect(name_compound, "phenylephr")) %>%
   distinct(host_subject_id, .keep_all = TRUE) 
 
 cardiology_counts <- CV_HT_drugs %>%
@@ -307,8 +295,8 @@ cvd_normalized <- ggplot(merged_data, aes(x = AgeGroup, y = normalized, fill = B
     plot.title = element_text(hjust = 0.5),  
     axis.text.x = element_text(angle = 45, hjust = 1))
 cvd_normalized
-ggsave("AGP_cardiovascular_drugs.pdf", plot = cvd_normalized, width = 6, height = 4, dpi = 900)
-getwd()
+#ggsave("AGP_cardiovascular_drugs.svg", plot = cvd_normalized, width = 6, height = 4, dpi = 900)
+#getwd()
 
 # DRUGS FOR ERECTILE DYSFUNCTION
 # Filter for drugs used for erectile dysfunction and remove duplicates
@@ -348,8 +336,8 @@ male_normalized <- ggplot(merged_data_2, aes(x = AgeGroup, y = normalized, fill 
     plot.title = element_text(hjust = 0.5),  
     axis.text.x = element_text(angle = 45, hjust = 1))
 male_normalized
-ggsave("AGP_erectile_dysfunction.pdf", plot = male_normalized, width = 6, height = 4, dpi = 900)
-getwd()
+#ggsave("AGP_erectile_dysfunction.svg", plot = male_normalized, width = 6, height = 4, dpi = 900)
+#getwd()
 
 # ANTIDEPRESSANTS
 depression_drugs <- AGP_final_drug_data %>% dplyr::filter(str_detect(therapeutic_indication, "depress")) %>%
@@ -387,11 +375,12 @@ depression_normalized <- ggplot(merged_data_3, aes(x = AgeGroup, y = normalized,
     plot.title = element_text(hjust = 0.5),  
     axis.text.x = element_text(angle = 45, hjust = 1))
 depression_normalized
-ggsave("AGP_antidepressants.pdf", plot = depression_normalized, width = 6, height = 4, dpi = 900)
-getwd()
+#ggsave("AGP_antidepressants.svg", plot = depression_normalized, width = 6, height = 4, dpi = 900)
+#getwd()
 
 # PAINKILLERS
 pain_drugs <- AGP_final_drug_data %>% dplyr::filter(str_detect(mechanism_of_action, "cyclooxygenase")) %>%
+  dplyr::filter(!name_parent_compound == "mesalazine") %>% 
   distinct(host_subject_id, .keep_all = TRUE)
 
 pain_counts <- pain_drugs %>%
@@ -426,8 +415,8 @@ pain_normalized <- ggplot(merged_data_4, aes(x = AgeGroup, y = normalized, fill 
     plot.title = element_text(hjust = 0.5), 
     axis.text.x = element_text(angle = 45, hjust = 1))
 pain_normalized
-ggsave("AGP_painkillers.pdf", plot = pain_normalized, width = 6, height = 4, dpi = 900)
-getwd()
+#ggsave("AGP_painkillers.svg", plot = pain_normalized, width = 6, height = 4, dpi = 900)
+#getwd()
 
 # Perform Chi-square test to investigate differences in painkiller detection by sex
 AGP_sex <- AGP_10317 %>%
@@ -486,8 +475,8 @@ allergy_normalized <- ggplot(merged_data_5, aes(x = AgeGroup, y = normalized, fi
     axis.text.x = element_text(angle = 45, hjust = 1)) +
   scale_y_continuous(limits = c(0.00, 0.14), breaks = c(0, 0.03, 0.06, 0.09, 0.12))
 allergy_normalized
-ggsave("AGP_antihistamines.pdf", plot = allergy_normalized, width = 6, height = 4, dpi = 900)
-getwd()
+#ggsave("AGP_antihistamines.svg", plot = allergy_normalized, width = 6, height = 4, dpi = 900)
+#getwd()
 
 # ANTIBIOTICS
 # Filter to keep only antibiotics
@@ -529,8 +518,8 @@ abx_normalized <- ggplot(merged_data_6, aes(x = AgeGroup, y = normalized, fill =
     plot.title = element_text(hjust = 0.5),  
     axis.text.x = element_text(angle = 45, hjust = 1))
 abx_normalized
-ggsave("AGP_antibiotics.pdf", plot = abx_normalized, width = 6, height = 4, dpi = 900)
-getwd()
+#ggsave("AGP_antibiotics.svg", plot = abx_normalized, width = 6, height = 4, dpi = 900)
+#getwd()
 
 ###### SI FIGURE S4b - WORLDMAP ######
 # Filter to keep only individuals with available geographic info
@@ -606,7 +595,7 @@ worldmap_AGP_US <- ggplot() +
   labs(title = "Drug Count by Geographic Location", x = "Longitude", y = "Latitude", color = "Drug Count", shape = "Drug Count") +
   coord_sf(xlim = c(-125, -67), ylim = c(23, 49))
 print(worldmap_AGP_US)
-ggsave("AGP_worldmap_US.pdf", plot = worldmap_AGP_US, width = 6, height = 4, dpi = 900)
+#ggsave("AGP_worldmap_US.svg", plot = worldmap_AGP_US, width = 6, height = 4, dpi = 900)
 
 # United Kingdom
 worldmap_AGP_UK <- ggplot() +
@@ -626,7 +615,7 @@ worldmap_AGP_UK <- ggplot() +
   labs(title = "Drug Count by Geographic Location", x = "Longitude", y = "Latitude", color = "Drug Count", shape = "Drug Count") +
   coord_sf(xlim = c(-7, 2), ylim = c(49, 60))
 print(worldmap_AGP_UK)
-ggsave("AGP_worldmap_Europe.pdf", plot = worldmap_AGP_UK, width = 6, height = 4, dpi = 900)
+#ggsave("AGP_worldmap_Europe.svg", plot = worldmap_AGP_UK, width = 6, height = 4, dpi = 900)
 
 # Australia
 worldmap_AGP_australia <- ggplot() +
@@ -646,7 +635,7 @@ worldmap_AGP_australia <- ggplot() +
   labs(title = "Drug Count by Geographic Location", x = "Longitude", y = "Latitude", color = "Drug Count", shape = "Drug Count") +
   coord_sf(xlim = c(112, 155), ylim = c(-39, -12))
 print(worldmap_AGP_australia)
-ggsave("AGP_worldmap_Australia.pdf", plot = worldmap_AGP_australia, width = 5, height = 3.2, dpi = 900)
+#ggsave("AGP_worldmap_Australia.svg", plot = worldmap_AGP_australia, width = 5, height = 3.2, dpi = 900)
 
 # Calculate the percentage of individuals with each drug count for the world map 
 drug_count_freq <- unique_country %>%
@@ -667,7 +656,7 @@ data <- data.frame(
              "Australia", "Europe", "United States", 
              "Australia", "Europe", "United States", "Australia", "Europe", "United States"),
   count = c(0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4),
-  freq = c(100, 426, 857, 18, 81, 254, 4, 21, 80, 2, 4, 32, 1, 1, 22)
+  freq = c(92, 400, 771, 18, 94, 277, 9, 28, 109, 1, 7, 53, 5, 4, 35)
 )
 
 # Create a frequency matrix
@@ -713,3 +702,4 @@ drug_count_freq_Australia <- drug_count_freq_Australia %>%
 UK <- unique_country %>%
   dplyr::filter((Country %in% c("United Kingdom"))) %>%
   dplyr::distinct(host_subject_id, .keep_all = TRUE)
+
